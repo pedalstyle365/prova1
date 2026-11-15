@@ -8,26 +8,30 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+# ===== CONFIGURACIÓN =====
 AWIN_FEED_URL = os.environ.get("AWIN_FEED_URL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-FORCE = os.environ.get("FORCE") == "1"   # útil para probar manualmente
+FORCE = os.environ.get("FORCE", "0") == "1"   # 1 = ignora ventana horaria (solo pruebas)
 
 MADRID = ZoneInfo("Europe/Madrid")
-HORAS_OBJETIVO = {10, 20}                # 10:00 y 20:00 hora peninsular
 ESTADO_PATH = "published.json"
 PRODUCTOS_POR_EJECUCION = 1
+SEGUNDOS_ENTRE_MENSAJES = 3
 
 
-def dentro_de_ventana():
-    ahora = datetime.now(MADRID)
-    if ahora.hour not in HORAS_OBJETIVO:
-        print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Fuera de ventana "
-              f"({ahora.hour}h). Saliendo sin publicar.")
-        return False
-    return True
+# ===== VENTANA HORARIA =====
+def obtener_slot(ahora):
+    """Devuelve 'morning', 'evening' o None según la hora de Madrid.
+    Ventana amplia para tolerar retrasos de GitHub Actions (hasta ~1h)."""
+    if ahora.hour in {10, 11}:
+        return "morning"
+    if ahora.hour in {20, 21}:
+        return "evening"
+    return None
 
 
+# ===== ESTADO =====
 def cargar_estado():
     if not os.path.exists(ESTADO_PATH):
         return {"publicados": []}
@@ -43,6 +47,7 @@ def guardar_estado(estado):
         json.dump(estado, f, ensure_ascii=False, indent=2)
 
 
+# ===== FEED =====
 def descargar_feed(url):
     print(f"[{datetime.now()}] Descargando feed...")
     r = requests.get(url, timeout=120)
@@ -53,6 +58,7 @@ def descargar_feed(url):
     return io.StringIO(texto)
 
 
+# ===== PRECIOS =====
 def parsear_precio(valor):
     if not valor:
         return None
@@ -63,6 +69,7 @@ def parsear_precio(valor):
 
 
 def formatear_precio(valor):
+    """19.99 -> '19,99 €' ; 1234.5 -> '1.234,50 €'"""
     if valor is None:
         return ""
     s = f"{valor:,.2f}"
@@ -71,6 +78,7 @@ def formatear_precio(valor):
 
 
 def elegir_precio_anterior(fila, precio_actual_num):
+    """Devuelve (num, texto) solo si hay un precio anterior mayor. Si no, (None, None)."""
     if not precio_actual_num:
         return None, None
     for campo in ["product_price_old", "store_price", "rrp_price"]:
@@ -86,6 +94,7 @@ def elegir_precio_anterior(fila, precio_actual_num):
     return None, None
 
 
+# ===== TELEGRAM =====
 def enviar_a_telegram(nombre, precio_antes_txt, precio_actual_txt, imagen_url, enlace):
     lineas = [f"<b>{nombre}</b>", ""]
     if precio_antes_txt:
@@ -115,6 +124,7 @@ def enviar_a_telegram(nombre, precio_antes_txt, precio_actual_txt, imagen_url, e
     return False
 
 
+# ===== PUBLICACIÓN =====
 def publicar_lote(lector, publicados, maximo):
     enviados = 0
     for fila in lector:
@@ -142,27 +152,44 @@ def publicar_lote(lector, publicados, maximo):
         ):
             publicados.add(pid)
             enviados += 1
+            if enviados < maximo:
+                time.sleep(SEGUNDOS_ENTRE_MENSAJES)
     return enviados
 
 
+# ===== MAIN =====
 def main():
-    if not FORCE and not dentro_de_ventana():
-        return
-
+    ahora = datetime.now(MADRID)
     estado = cargar_estado()
+
+    if FORCE:
+        slot = None
+        print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Modo FORCE activo (sin ventana ni slot).")
+    else:
+        slot = obtener_slot(ahora)
+        if slot is None:
+            print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Fuera de ventana (hora {ahora.hour}). Saliendo sin publicar.")
+            return
+        hoy = ahora.strftime("%Y-%m-%d")
+        if estado.get(f"last_{slot}") == hoy:
+            print(f"[{ahora.strftime('%H:%M')} Madrid] Slot '{slot}' ya publicado hoy. Saliendo.")
+            return
+
     publicados = set(estado.get("publicados", []))
     print(f"Estado cargado: {len(publicados)} productos ya publicados.")
 
     lector = csv.DictReader(descargar_feed(AWIN_FEED_URL))
     enviados = publicar_lote(lector, publicados, PRODUCTOS_POR_EJECUCION)
 
-    if enviados == 0:
+    if enviados == 0 and not FORCE:
         print("Sin productos nuevos. Reset del estado y segundo intento.")
         publicados = set()
         lector = csv.DictReader(descargar_feed(AWIN_FEED_URL))
         enviados = publicar_lote(lector, publicados, PRODUCTOS_POR_EJECUCION)
 
     estado["publicados"] = sorted(publicados)
+    if slot:
+        estado[f"last_{slot}"] = ahora.strftime("%Y-%m-%d")
     guardar_estado(estado)
     print(f"Publicados en esta ejecución: {enviados}")
 
