@@ -2,20 +2,32 @@ name: Publicar ofertas Telegram
 
 on:
   schedule:
-    # 4 lanzamientos UTC → el script filtra y solo publica a las 10:00 y 20:00 Madrid
-    - cron: '0 8,9,18,19 * * *'
-  workflow_dispatch:      # manual; añade FORCE=1 en la petición para saltarse la ventana
+    # 6 lanzamientos UTC. El script publica solo en las ventanas 10-11h y 20-21h de Madrid
+    # (cubre cambio horario invierno/verano y tolera retrasos de GitHub de hasta ~1h).
+    - cron: '0 8,9,10,18,19,20 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Forzar publicación ignorando ventana horaria y slot"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+
+concurrency:
+  group: publicar-ofertas
+  cancel-in-progress: false
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -27,6 +39,7 @@ jobs:
           AWIN_FEED_URL: ${{ secrets.AWIN_FEED_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FORCE: ${{ inputs.force == true && '1' || '0' }}
         run: python main.py
 
       - name: Guardar estado
@@ -36,6 +49,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add published.json
-            git commit -m "chore: actualizar productos publicados" || echo "Sin cambios"
+            git commit -m "chore: actualizar estado de publicaciones" || echo "Sin cambios"
             git push || echo "Nada que empujar"
           fi
