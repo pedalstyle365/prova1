@@ -1,7 +1,13 @@
-name: Prueba publicacion Telegram
+name: Publicar ofertas Telegram
 
 on:
-  workflow_dispatch:      # solo manual para esta prueba
+  schedule:
+    # 4 lanzamientos UTC → el script filtra y solo publica a las 10:00 y 20:00 Madrid
+    - cron: '0 8,9,18,19 * * *'
+  workflow_dispatch:      # manual; añade FORCE=1 en la petición para saltarse la ventana
+
+permissions:
+  contents: write
 
 jobs:
   publicar:
@@ -22,3 +28,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
+
+      - name: Guardar estado
+        if: always()
+        run: |
+          if [ -f published.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add published.json
+            git commit -m "chore: actualizar productos publicados" || echo "Sin cambios"
+            git push || echo "Nada que empujar"
+          fi
