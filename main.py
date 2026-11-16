@@ -8,11 +8,11 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-# ===== CONFIGURACIÓN =====
 AWIN_FEED_URL = os.environ.get("AWIN_FEED_URL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-FORCE = os.environ.get("FORCE", "0") == "1"   # 1 = ignora ventana horaria (solo pruebas)
+FORCE = os.environ.get("FORCE", "0") == "1"
+SCHEDULE_SLOT = os.environ.get("SCHEDULE_SLOT") or None
 
 MADRID = ZoneInfo("Europe/Madrid")
 ESTADO_PATH = "published.json"
@@ -20,18 +20,6 @@ PRODUCTOS_POR_EJECUCION = 1
 SEGUNDOS_ENTRE_MENSAJES = 3
 
 
-# ===== VENTANA HORARIA =====
-def obtener_slot(ahora):
-    """Devuelve 'morning', 'evening' o None según la hora de Madrid.
-    Ventana amplia para tolerar retrasos de GitHub Actions (hasta ~1h)."""
-    if ahora.hour in {10, 11}:
-        return "morning"
-    if ahora.hour in {20, 21}:
-        return "evening"
-    return None
-
-
-# ===== ESTADO =====
 def cargar_estado():
     if not os.path.exists(ESTADO_PATH):
         return {"publicados": []}
@@ -47,7 +35,6 @@ def guardar_estado(estado):
         json.dump(estado, f, ensure_ascii=False, indent=2)
 
 
-# ===== FEED =====
 def descargar_feed(url):
     print(f"[{datetime.now()}] Descargando feed...")
     r = requests.get(url, timeout=120)
@@ -58,7 +45,6 @@ def descargar_feed(url):
     return io.StringIO(texto)
 
 
-# ===== PRECIOS =====
 def parsear_precio(valor):
     if not valor:
         return None
@@ -69,7 +55,6 @@ def parsear_precio(valor):
 
 
 def formatear_precio(valor):
-    """19.99 -> '19,99 €' ; 1234.5 -> '1.234,50 €'"""
     if valor is None:
         return ""
     s = f"{valor:,.2f}"
@@ -78,7 +63,6 @@ def formatear_precio(valor):
 
 
 def elegir_precio_anterior(fila, precio_actual_num):
-    """Devuelve (num, texto) solo si hay un precio anterior mayor. Si no, (None, None)."""
     if not precio_actual_num:
         return None, None
     for campo in ["product_price_old", "store_price", "rrp_price"]:
@@ -94,7 +78,6 @@ def elegir_precio_anterior(fila, precio_actual_num):
     return None, None
 
 
-# ===== TELEGRAM =====
 def enviar_a_telegram(nombre, precio_antes_txt, precio_actual_txt, imagen_url, enlace):
     lineas = [f"<b>{nombre}</b>", ""]
     if precio_antes_txt:
@@ -124,7 +107,6 @@ def enviar_a_telegram(nombre, precio_antes_txt, precio_actual_txt, imagen_url, e
     return False
 
 
-# ===== PUBLICACIÓN =====
 def publicar_lote(lector, publicados, maximo):
     enviados = 0
     for fila in lector:
@@ -157,23 +139,20 @@ def publicar_lote(lector, publicados, maximo):
     return enviados
 
 
-# ===== MAIN =====
 def main():
     ahora = datetime.now(MADRID)
     estado = cargar_estado()
+    slot = None if FORCE else SCHEDULE_SLOT
 
     if FORCE:
-        slot = None
-        print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Modo FORCE activo (sin ventana ni slot).")
+        print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Modo FORCE activo (sin control de slot).")
     else:
-        slot = obtener_slot(ahora)
-        if slot is None:
-            print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Fuera de ventana (hora {ahora.hour}). Saliendo sin publicar.")
-            return
-        hoy = ahora.strftime("%Y-%m-%d")
-        if estado.get(f"last_{slot}") == hoy:
-            print(f"[{ahora.strftime('%H:%M')} Madrid] Slot '{slot}' ya publicado hoy. Saliendo.")
-            return
+        print(f"[{ahora.strftime('%Y-%m-%d %H:%M')} Madrid] Sin restricción horaria; slot: {slot or 'manual'}.")
+        if slot:
+            hoy = ahora.strftime("%Y-%m-%d")
+            if estado.get(f"last_{slot}") == hoy:
+                print(f"Slot '{slot}' ya publicado hoy. Saliendo.")
+                return
 
     publicados = set(estado.get("publicados", []))
     print(f"Estado cargado: {len(publicados)} productos ya publicados.")
