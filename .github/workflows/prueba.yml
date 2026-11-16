@@ -2,16 +2,11 @@ name: Publicar ofertas Telegram
 
 on:
   schedule:
-    # 8 lanzamientos UTC. Las ventanas amplias del script (10-13h y 20-23h Madrid)
-    # hacen que, aunque GitHub retrase la ejecución, siempre caiga dentro de una ventana
-    # en invierno (UTC+1) y en verano (UTC+2), sin duplicar.
-    - cron: '0 8,9,10,11,18,19,20,21 * * *'
+    # 6 lanzamientos UTC para asegurar 2 publicaciones/día (mañana y tarde)
+    # aunque GitHub retrase la ejecución. Sin ventana de cierre: el script
+    # solo evita duplicar el slot del día.
+    - cron: '0 8,9,10,18,19,20 * * *'
   workflow_dispatch:
-    inputs:
-      force:
-        description: "Forzar publicación ignorando ventana horaria y slot"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -40,7 +35,6 @@ jobs:
           AWIN_FEED_URL: ${{ secrets.AWIN_FEED_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          FORCE: ${{ inputs.force == true && '1' || '0' }}
         run: python main.py
 
       - name: Guardar estado
