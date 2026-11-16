@@ -2,13 +2,14 @@ name: Publicar ofertas Telegram
 
 on:
   schedule:
-    # 6 lanzamientos UTC. El script publica solo en las ventanas 10-11h y 20-21h de Madrid
-    # (cubre cambio horario invierno/verano y tolera retrasos de GitHub de hasta ~1h).
-    - cron: '0 8,9,10,18,19,20 * * *'
+    - cron: '0 10 * * *'
+      timezone: "Europe/Madrid"
+    - cron: '0 20 * * *'
+      timezone: "Europe/Madrid"
   workflow_dispatch:
     inputs:
       force:
-        description: "Forzar publicación ignorando ventana horaria y slot"
+        description: "Forzar publicación ignorando el slot"
         type: boolean
         default: false
 
