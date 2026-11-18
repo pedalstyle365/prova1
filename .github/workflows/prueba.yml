@@ -2,10 +2,10 @@ name: Publicar ofertas Telegram
 
 on:
   schedule:
-    # 6 lanzamientos UTC para asegurar 2 publicaciones/día (mañana y tarde) 
-    # aunque GitHub retrase la ejecución. Sin ventana de cierre: el script
-    # solo evita duplicar el slot del día.
-    - cron: '0 8,9,10,18,19,20 * * *'
+    # Minuto 17 para evitar la saturación del minuto 0 en GitHub Actions.
+    # 6 lanzamientos UTC para cubrir mañana y tarde en Madrid (invierno/verano).
+    # El script evita duplicar el slot del día; no hay ventana de cierre.
+    - cron: '17 8,9,10,18,19,20 * * *'
   workflow_dispatch:
 
 permissions:
