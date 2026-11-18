@@ -9,7 +9,7 @@ import unicodedata
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
- 
+
 # ===== CONFIGURACIÓN =====
 AWIN_FEED_URL = os.environ.get("AWIN_FEED_URL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -112,17 +112,11 @@ def normalizar_hashtag(texto):
 
 
 def construir_hashtags(fila):
-    """Devuelve 3 hashtags: categoría, marca y genérico de nutrición."""
+    """Devuelve 3 hashtags: categoría, marca y #NutriRadar fijo."""
     candidatos = []
 
-    # 1) Categoría (varias columnas posibles en el feed de Awin)
-    cat = (
-        fila.get("category_name")
-        or fila.get("merchant_category")
-        or fila.get("product_type")
-        or ""
-    )
-    # Si la categoría viene con path tipo "Salud > Vitaminas > Vitamina C", coger la última
+    # 1) Categoría (del feed de Awin)
+    cat = (fila.get("merchant_category") or fila.get("category_name") or "").strip()
     cat = cat.split(">")[-1].strip() if cat else ""
     h_cat = normalizar_hashtag(cat)
     if h_cat:
@@ -133,10 +127,10 @@ def construir_hashtags(fila):
     if h_marca:
         candidatos.append(f"#{h_marca}")
 
-    # 3) Genérico fijo del canal (siempre presente)
+    # 3) Fijo del canal
     candidatos.append("#NutriRadar")
 
-    # Quitar duplicados manteniendo orden y limitar a 3
+    # Quitar duplicados y limitar a 3
     vistos = set()
     hashtags = []
     for h in candidatos:
@@ -146,8 +140,8 @@ def construir_hashtags(fila):
         if len(hashtags) == 3:
             break
 
-    # Rellenar si faltan con genéricos de nutrición
-    relleno = ["#Nutricion", "#Bienestar", "#Suplementos", "#Salud"]
+    # Rellenar si faltan (solo si categoría o marca venían vacías)
+    relleno = ["#Nutricion", "#Bienestar", "#Suplementos"]
     for r in relleno:
         if len(hashtags) >= 3:
             break
@@ -222,6 +216,10 @@ def publicar_lote(lector, publicados, maximo):
             enviados += 1
             if enviados < maximo:
                 time.sleep(SEGUNDOS_ENTRE_MENSAJES)
+        else:
+            # Si Telegram falla, paramos para no saturar logs ni la API
+            print("Deteniendo lote por error de Telegram.")
+            break
     return enviados
 
 
