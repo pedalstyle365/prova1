@@ -3,6 +3,7 @@ import csv
 import io
 import gzip
 import json
+import random
 import re
 import time
 import unicodedata
@@ -235,10 +236,8 @@ def enviar_a_telegram(nombre, precio_antes_txt, precio_actual_txt, descuento_pct
     lineas.append(" ".join(hashtags))
     caption = "\n".join(lineas)[:1024]
 
-    # 1) Intentar con foto
     if imagen_bytes and enviar_foto(nombre, caption, imagen_bytes, enlace):
         return True
-    # 2) Fallback: solo texto
     print(f"[{datetime.now()}] 🔄 Fallback a texto para: {nombre[:60]}")
     return enviar_texto(caption, enlace)
 
@@ -287,10 +286,8 @@ def publicar_lote(candidatos, publicados, historial, maximo):
         if not precio_actual:
             continue
 
-        # Precio máximo visto (historial guarda el precio más alto, no el último)
         precio_max_visto = historial.get(pid)
 
-        # ¿Hay oferta?
         descuento_pct = None
         precio_antes_txt = None
         if precio_max_visto and precio_max_visto > precio_actual + 0.01:
@@ -299,12 +296,9 @@ def publicar_lote(candidatos, publicados, historial, maximo):
                 descuento_pct = desc_calc
                 precio_antes_txt = formatear_precio(precio_max_visto)
 
-        # Actualizar historial: guardar el precio MÁXIMO visto
         if precio_max_visto is None or precio_actual > precio_max_visto:
             historial[pid] = precio_actual
-        # (si el precio actual és inferior, NO sobreescrivim el màxim)
 
-        # Descargar imagen
         imagen_bytes = None
         try:
             r = requests.get(c["imagen"], timeout=20)
